@@ -202,9 +202,9 @@ Description=Whoogle
 #Environment=WHOOGLE_ALT_IG=farside.link/bibliogram/u
 #Environment=WHOOGLE_ALT_RD=farside.link/libreddit
 #Environment=WHOOGLE_ALT_MD=farside.link/scribe
-#Environment=WHOOGLE_ALT_TL=lingva.ml
-#Environment=WHOOGLE_ALT_IMG=imgin.voidnet.tech
-#Environment=WHOOGLE_ALT_WIKI=wikiless.org
+#Environment=WHOOGLE_ALT_TL=farside.link/lingva
+#Environment=WHOOGLE_ALT_IMG=farside.link/rimgo
+#Environment=WHOOGLE_ALT_WIKI=farside.link/wikiless
 # Load values from dotenv only
 #Environment=WHOOGLE_DOTENV=1
 Type=simple
@@ -321,6 +321,7 @@ There are a few optional environment variables available for customizing a Whoog
 
 | Variable             | Description                                                                               |
 | -------------------- | ----------------------------------------------------------------------------------------- |
+| WHOOGLE_URL_PREFIX   | The URL prefix to use for the whoogle instance (i.e. "/whoogle")                          |
 | WHOOGLE_DOTENV       | Load environment variables in `whoogle.env`                                               |
 | WHOOGLE_USER         | The username for basic auth. WHOOGLE_PASS must also be set if used.                       |
 | WHOOGLE_PASS         | The password for basic auth. WHOOGLE_USER must also be set if used.                       |
@@ -410,7 +411,7 @@ Browser settings:
 	  2. Go to `Default Results` and click the `Setup fallback results` button. Click `+` and add Whoogle, then  drag it to the top.
   - Chrome/Chromium-based Browsers
     - Automatic
-      - Visit the home page of your Whoogle Search instance -- this may automatically add the search engine to your list of search engines. If not, you can add it manually.
+      - Visit the home page of your Whoogle Search instance -- this will automatically add the search engine if the [requirements](https://www.chromium.org/tab-to-search/) are met (GET request, no OnSubmit script, no path). If not, you can add it manually.
     - Manual
       - Under search engines > manage search engines > add, manually enter your Whoogle instance details with a `<whoogle url>/search?q=%s` formatted search URL.
 
@@ -508,20 +509,22 @@ A lot of the app currently piggybacks on Google's existing support for fetching 
 
 ## Public Instances
 
-*Note: Use public instances at your own discretion. The maintainers of Whoogle are only responsible for https://whoogle.fossho.st, and do not personally validate the integrity of any other instances. Popular public instances are more likely to be rate-limited or blocked.*
+*Note: Use public instances at your own discretion. The maintainers of Whoogle do not personally validate the integrity of any other instances. Popular public instances are more likely to be rate-limited or blocked.*
 
 | Website | Country | Language | Cloudflare |
 |-|-|-|-|
-| [https://whoogle.fossho.st](https://whoogle.fossho.st) | 🇺🇸 US | Multi-choice | |
 | [https://search.albony.xyz](https://search.albony.xyz/) | 🇮🇳 IN | Multi-choice |  |
-| [https://whoogle.sdf.org](https://whoogle.sdf.org) | 🇺🇸 US | Multi-choice |
 | [https://search.garudalinux.org](https://search.garudalinux.org) | 🇩🇪 DE | Multi-choice |  |
 | [https://whooglesearch.net](https://whooglesearch.net) | 🇩🇪 DE | Spanish |  |
-| [https://search.exonip.de](https://search.exonip.de) | 🇳🇱 NL | Multi-choice |  |
-| [https://s.alefvanoon.xyz](https://s.alefvanoon.xyz) | 🇺🇸 US | Multi-choice | ✅ |
+| [https://s.tokhmi.xyz](https://s.tokhmi.xyz) | 🇺🇸 US | Multi-choice | ✅ |
 | [https://www.whooglesearch.ml](https://www.whooglesearch.ml) | 🇺🇸 US | English | |
 | [https://search.sethforprivacy.com](https://search.sethforprivacy.com) | 🇩🇪 DE | English | |
-| [https://whoogle.dcs0.hu](https://whoogle.dcs0.hu) | 🇭🇺 HU | Multi-choice | ✅ |
+| [https://whoogle.dcs0.hu](https://whoogle.dcs0.hu) | 🇭🇺 HU | Multi-choice | |
+| [https://whoogle.esmailelbob.xyz](https://whoogle.esmailelbob.xyz) | 🇨🇦 CA | Multi-choice | |
+| [https://gowogle.voring.me](https://gowogle.voring.me) | 🇺🇸 US | Multi-choice | |
+| [https://whoogle.lunar.icu](https://whoogle.lunar.icu) | 🇩🇪 DE | Multi-choice | ✅ |
+
+
 
 * A checkmark in the "Cloudflare" category here refers to the use of the reverse proxy, [Cloudflare](https://cloudflare.com). The checkmark will not be listed for a site which uses Cloudflare DNS but rather the proxying service which grants Cloudflare the ability to monitor traffic to the website.
 

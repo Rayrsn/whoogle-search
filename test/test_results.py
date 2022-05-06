@@ -60,7 +60,7 @@ def test_translate_search(client):
     # Pretty weak test, but better than nothing
     str_data = str(rv.data)
     assert 'iframe' in str_data
-    assert 'lingva.ml/auto/en/ hola' in str_data
+    assert '/auto/en/ hola' in str_data
 
 
 def test_block_results(client):
@@ -87,6 +87,16 @@ def test_block_results(client):
         if not result_site:
             continue
         assert result_site not in 'pinterest.com'
+
+
+def test_view_my_ip(client):
+    rv = client.post(f'/{Endpoint.search}', data=dict(q='my ip address'))
+    assert rv._status_code == 200
+
+    # Pretty weak test, but better than nothing
+    str_data = str(rv.data)
+    assert 'Your public IP address' in str_data
+    assert '127.0.0.1' in str_data
 
 
 def test_recent_results(client):

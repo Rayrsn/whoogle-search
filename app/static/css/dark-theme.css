@@ -22,6 +22,11 @@ li {
     color: var(--whoogle-dark-text) !important;
 }
 
+.anon-view {
+    color: var(--whoogle-dark-text) !important;
+    text-decoration: underline;
+}
+
 textarea {
     background: var(--whoogle-dark-page-bg) !important;
     color: var(--whoogle-dark-text) !important;
@@ -59,19 +64,26 @@ select {
 
 .ZINbbc {
     overflow: hidden;
-    background-color: var(--whoogle-dark-result-bg) !important;   
+    box-shadow: 0 0 0 0 !important;
+    background-color: var(--whoogle-dark-result-bg) !important;
+}
+
+.KP7LCb {
+    box-shadow: 0 0 0 0 !important;
 }
 
 .BVG0Nb {
-    background-color: var(--whoogle-dark-result-bg) !important; 
+    box-shadow: 0 0 0 0 !important;
+    background-color: var(--whoogle-dark-page-bg) !important;
+}
+
+.ZINbbc.luh4tb {
+    background: var(--whoogle-dark-result-bg) !important;
+    margin-bottom: 24px !important;
 }
 
 .bRsWnc {
-    background-color: var(--whoogle-dark-result-bg) !important;   
-}
-
-.BVG0Nb {
-    background-color: var(--whoogle-dark-page-bg) !important;
+    background-color: var(--whoogle-dark-result-bg) !important;
 }
 
 .x54gtf {
@@ -91,7 +103,7 @@ select {
 }
 
 .sa1toc {
-	background: var(--whoogle-dark-element-bg) !important;
+	background: var(--whoogle-dark-page-bg) !important;
 }
 
 #search-bar {
@@ -197,4 +209,8 @@ path {
 
 .cb:focus {
   color: var(--whoogle-dark-contrast-text) !important;
+}
+
+.desktop-header, .mobile-header {
+    background-color: var(--whoogle-dark-result-bg) !important;
 }

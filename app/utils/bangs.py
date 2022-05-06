@@ -1,5 +1,6 @@
 import json
 import requests
+import urllib.parse as urlparse
 
 DDG_BANGS = 'https://duckduckgo.com/bang.v255.js'
 
@@ -59,8 +60,17 @@ def resolve_bang(query: str, bangs_dict: dict) -> str:
         if operator not in split_query \
                 and operator[1:] + operator[0] not in split_query:
             continue
-        return bangs_dict[operator]['url'].replace(
-            '{}',
-            query.replace(operator if operator in split_query
-                          else operator[1:] + operator[0], '').strip(), 1)
+
+        bang_query = query.replace(
+            operator if operator in split_query else operator[1:] +
+            operator[0], ''
+        ).strip()
+
+        bang_url = bangs_dict[operator]['url']
+
+        if bang_query:
+            return bang_url.replace('{}', bang_query, 1)
+        else:
+            parsed_url = urlparse.urlparse(bang_url)
+            return f'{parsed_url.scheme}://{parsed_url.netloc}'
     return ''

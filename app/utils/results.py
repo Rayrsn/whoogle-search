@@ -1,5 +1,8 @@
+from app.models.config import Config
 from app.models.endpoint import Endpoint
 from bs4 import BeautifulSoup, NavigableString
+import copy
+from flask import current_app
 import html
 import os
 import urllib.parse as urlparse
@@ -9,6 +12,7 @@ import re
 SKIP_ARGS = ['ref_src', 'utm']
 SKIP_PREFIX = ['//www.', '//mobile.', '//m.']
 GOOG_STATIC = 'www.gstatic.com'
+G_M_LOGO_URL = 'https://www.gstatic.com/m/images/icons/googleg.gif'
 GOOG_IMG = '/images/branding/searchlogo/1x/googlelogo'
 LOGO_URL = GOOG_IMG + '_desk'
 BLANK_B64 = ('data:image/png;base64,'
@@ -17,10 +21,11 @@ BLANK_B64 = ('data:image/png;base64,'
 
 # Ad keywords
 BLACKLIST = [
-    'ad', 'anuncio', 'annuncio', 'annonce', 'Anzeige', '广告', '廣告', 'Reklama',
-    'Реклама', 'Anunț', '광고', 'annons', 'Annonse', 'Iklan', '広告', 'Augl.',
-    'Mainos', 'Advertentie', 'إعلان', 'Գովազդ', 'विज्ञापन', 'Reklam', 'آگهی',
-    'Reklāma', 'Reklaam', 'Διαφήμιση', 'מודעה', 'Hirdetés', 'Anúncio'
+    'ad', 'ads', 'anuncio', 'annuncio', 'annonce', 'Anzeige', '广告', '廣告',
+    'Reklama', 'Реклама', 'Anunț', '광고', 'annons', 'Annonse', 'Iklan',
+    '広告', 'Augl.', 'Mainos', 'Advertentie', 'إعلان', 'Գովազդ', 'विज्ञापन',
+    'Reklam', 'آگهی', 'Reklāma', 'Reklaam', 'Διαφήμιση', 'מודעה', 'Hirdetés',
+    'Anúncio'
 ]
 
 SITE_ALTS = {
@@ -32,8 +37,8 @@ SITE_ALTS = {
         'medium.com',
         'levelup.gitconnected.com'
     ], os.getenv('WHOOGLE_ALT_MD', 'farside.link/scribe')),
-    'imgur.com': os.getenv('WHOOGLE_ALT_IMG', 'imgin.voidnet.tech'),
-    'wikipedia.com': os.getenv('WHOOGLE_ALT_WIKI', 'wikiless.org')
+    'imgur.com': os.getenv('WHOOGLE_ALT_IMG', 'farside.link/rimgo'),
+    'wikipedia.org': os.getenv('WHOOGLE_ALT_WIKI', 'farside.link/wikiless')
 }
 
 
@@ -88,7 +93,8 @@ def has_ad_content(element: str) -> bool:
         bool: True/False for the element containing an ad
 
     """
-    return (element.upper() in (value.upper() for value in BLACKLIST)
+    element_str = ''.join(filter(str.isalpha, element))
+    return (element_str.upper() in (value.upper() for value in BLACKLIST)
             or 'ⓘ' in element)
 
 
@@ -125,7 +131,7 @@ def get_site_alt(link: str) -> str:
     hostname = urlparse.urlparse(link).hostname
 
     for site_key in SITE_ALTS.keys():
-        if not hostname or site_key not in hostname:
+        if not hostname or site_key not in hostname or not SITE_ALTS[site_key]:
             continue
 
         link = link.replace(hostname, SITE_ALTS[site_key])
@@ -180,9 +186,33 @@ def append_nojs(result: BeautifulSoup) -> None:
 
     """
     nojs_link = BeautifulSoup(features='html.parser').new_tag('a')
-    nojs_link['href'] = f'/{Endpoint.window}?location=' + result['href']
+    nojs_link['href'] = f'{Endpoint.window}?nojs=1&location=' + result['href']
     nojs_link.string = ' NoJS Link'
     result.append(nojs_link)
+
+
+def append_anon_view(result: BeautifulSoup, config: Config) -> None:
+    """Appends an 'anonymous view' for a search result, where all site
+    contents are viewed through Whoogle as a proxy.
+
+    Args:
+        result: The search result to append an anon view link to
+        nojs: Remove Javascript from Anonymous View
+
+    Returns:
+        None
+
+    """
+    av_link = BeautifulSoup(features='html.parser').new_tag('a')
+    nojs = 'nojs=1' if config.nojs else 'nojs=0'
+    location = f'location={result["href"]}'
+    av_link['href'] = f'{Endpoint.window}?{nojs}&{location}'
+    translation = current_app.config['TRANSLATIONS'][
+       config.get_localization_lang()
+    ]
+    av_link.string = f'{translation["anon-view"]}'
+    av_link['class'] = 'anon-view'
+    result.append(av_link)
 
 
 def add_ip_card(html_soup: BeautifulSoup, ip: str) -> BeautifulSoup:
@@ -197,33 +227,28 @@ def add_ip_card(html_soup: BeautifulSoup, ip: str) -> BeautifulSoup:
         BeautifulSoup
 
     """
-    if (not html_soup.select_one(".EY24We")
-            and html_soup.select_one(".OXXup").get_text().lower() == "all"):
+    main_div = html_soup.select_one('#main')
+    if main_div:
         # HTML IP card tag
-        ip_tag = html_soup.new_tag("div")
-        ip_tag["class"] = "ZINbbc xpd O9g5cc uUPGi"
+        ip_tag = html_soup.new_tag('div')
+        ip_tag['class'] = 'ZINbbc xpd O9g5cc uUPGi'
 
         # For IP Address html tag
-        ip_address = html_soup.new_tag("div")
-        ip_address["class"] = "kCrYT ip-address-div"
+        ip_address = html_soup.new_tag('div')
+        ip_address['class'] = 'kCrYT ip-address-div'
         ip_address.string = ip
 
         # Text below the IP address
-        ip_text = html_soup.new_tag("div")
-        ip_text.string = "Your public IP address"
-        ip_text["class"] = "kCrYT ip-text-div"
+        ip_text = html_soup.new_tag('div')
+        ip_text.string = 'Your public IP address'
+        ip_text['class'] = 'kCrYT ip-text-div'
 
         # Adding all the above html tags to the IP card
         ip_tag.append(ip_address)
         ip_tag.append(ip_text)
 
-        # Finding the element before which the IP card would be placed
-        f_link = html_soup.select_one(".BNeawe.vvjwJb.AP7Wnd")
-        ref_element = f_link.find_parent(class_="ZINbbc xpd O9g5cc" +
-                                                " uUPGi")
-
-        # Inserting the element
-        ref_element.insert_before(ip_tag)
+        # Insert the element at the top of the result list
+        main_div.insert_before(ip_tag)
     return html_soup
 
 
@@ -248,6 +273,9 @@ def check_currency(response: str) -> dict:
         currency2 = currency_link[1].text
         currency1 = currency1.rstrip('=').split(' ', 1)
         currency2 = currency2.split(' ', 1)
+
+        # Handle differences in currency formatting
+        # i.e. "5.000" vs "5,000"
         if currency2[0][-3] == ',':
             currency1[0] = currency1[0].replace('.', '')
             currency1[0] = currency1[0].replace(',', '.')
@@ -256,10 +284,17 @@ def check_currency(response: str) -> dict:
         else:
             currency1[0] = currency1[0].replace(',', '')
             currency2[0] = currency2[0].replace(',', '')
-        return {'currencyValue1': float(currency1[0]),
-                'currencyLabel1': currency1[1],
-                'currencyValue2': float(currency2[0]),
-                'currencyLabel2': currency2[1]
+
+        currency1_value = float(re.sub(r'[^\d\.]', '', currency1[0]))
+        currency1_label = currency1[1]
+
+        currency2_value = float(re.sub(r'[^\d\.]', '', currency2[0]))
+        currency2_label = currency2[1]
+
+        return {'currencyValue1': currency1_value,
+                'currencyLabel1': currency1_label,
+                'currencyValue2': currency2_value,
+                'currencyLabel2': currency2_label
                 }
     return {}
 
@@ -329,3 +364,39 @@ def add_currency_card(soup: BeautifulSoup,
 
     element1.insert_before(conversion_box)
     return soup
+
+
+def get_tabs_content(tabs: dict,
+                     full_query: str,
+                     search_type: str,
+                     translation: dict) -> dict:
+    """Takes the default tabs content and updates it according to the query.
+
+    Args:
+        tabs: The default content for the tabs
+        full_query: The original search query
+        search_type: The current search_type
+        translation: The translation to get the names of the tabs
+
+    Returns:
+        dict: contains the name, the href and if the tab is selected or not
+    """
+    tabs = copy.deepcopy(tabs)
+    for tab_id, tab_content in tabs.items():
+        # update name to desired language
+        if tab_id in translation:
+            tab_content['name'] = translation[tab_id]
+
+        # update href with query
+        query = full_query.replace(f'&tbm={search_type}', '')
+
+        if tab_content['tbm'] is not None:
+            query = f"{query}&tbm={tab_content['tbm']}"
+
+        tab_content['href'] = tab_content['href'].format(query=query)
+
+        # update if selected tab (default all tab is selected)
+        if tab_content['tbm'] == search_type:
+            tabs['all']['selected'] = False
+            tab_content['selected'] = True
+    return tabs

@@ -56,6 +56,7 @@ class Search:
     """
     def __init__(self, request, config, session_key, cookies_disabled=False):
         method = request.method
+        self.request = request
         self.request_params = request.args if method == 'GET' else request.form
         self.user_agent = request.headers.get('User-Agent')
         self.feeling_lucky = False
@@ -115,11 +116,13 @@ class Search:
         mobile = 'Android' in self.user_agent or 'iPhone' in self.user_agent
 
         content_filter = Filter(self.session_key,
+                                root_url=self.request.url_root,
                                 mobile=mobile,
                                 config=self.config)
         full_query = gen_query(self.query,
                                self.request_params,
                                self.config)
+        self.full_query = full_query
 
         # force mobile search when view image is true and
         # the request is not already made by a mobile
@@ -152,6 +155,7 @@ class Search:
                                 self.request_params.to_dict(flat=True).items()
                                 if self.config.is_safe_key(k))
             for link in formatted_results.find_all('a', href=True):
+                link['rel'] = "nofollow noopener noreferrer"
                 if 'search?' not in link['href'] or link['href'].index(
                         'search?') > 1:
                     continue

@@ -152,6 +152,10 @@
                             <input type="text" name="block_url" id="config-block"
                                    placeholder="{{ translation['config-block-url-help'] }}" value="{{ config.block_url }}">
                         </div>
+                        <div class="config-div config-div-anon-view">
+                            <label for="config-anon-view">{{ translation['config-anon-view'] }}: </label>
+                            <input type="checkbox" name="anon_view" id="config-anon-view" {{ 'checked' if config.anon_view else '' }}>
+                        </div>
                         <div class="config-div config-div-nojs">
                             <label for="config-nojs">{{ translation['config-nojs'] }}: </label>
                             <input type="checkbox" name="nojs" id="config-nojs" {{ 'checked' if config.nojs else '' }}>
@@ -204,7 +208,7 @@
                             <input type="checkbox" name="get_only"
                                    id="config-get-only" {{ 'checked' if config.get_only else '' }}>
                         </div>
-                        <div class="config-div config-div-get-only">
+                        <div class="config-div config-div-accept-language">
                             <label for="config-accept-language">Set Accept-Language: </label>
                             <input type="checkbox" name="accept_language"
                                    id="config-accept-language" {{ 'checked' if config.accept_language else '' }}>
