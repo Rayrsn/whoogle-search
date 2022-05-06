@@ -3,11 +3,7 @@
 # ./run # Runs the full web app
 # ./run test # Runs the testing suite
 
-<<<<<<< HEAD
-set -eu
-=======
 set -e
->>>>>>> 194ddc33f36e6955587816acd2347bbebeef7912
 
 SCRIPT_DIR="$(CDPATH= command cd -- "$(dirname -- "$0")" && pwd -P)"
 

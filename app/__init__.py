@@ -35,11 +35,7 @@ if os.getenv('HTTPS_ONLY'):
     app.config['SESSION_COOKIE_NAME'] = '__Secure-session'
     app.config['SESSION_COOKIE_SECURE'] = True
 
-<<<<<<< HEAD
-app.config['VERSION_NUMBER'] = '0.7.1'
-=======
 app.config['VERSION_NUMBER'] = '0.7.2'
->>>>>>> 194ddc33f36e6955587816acd2347bbebeef7912
 app.config['APP_ROOT'] = os.getenv(
     'APP_ROOT',
     os.path.dirname(os.path.abspath(__file__)))

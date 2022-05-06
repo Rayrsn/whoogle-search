@@ -33,18 +33,6 @@ from cryptography.exceptions import InvalidSignature
 
 # Load DDG bang json files only on init
 bang_json = json.load(open(app.config['BANG_FILE'])) or {}
-<<<<<<< HEAD
-
-# Check the newest version of WHOOGLE
-update = bsoup(get(app.config['RELEASES_URL']).text, 'html.parser')
-newest_version = update.select_one('[class="Link--primary"]').string[1:]
-current_version = int(''.join(filter(str.isdigit,
-                                     app.config['VERSION_NUMBER'])))
-newest_version = int(''.join(filter(str.isdigit, newest_version)))
-newest_version = '' if current_version >= newest_version \
-    else newest_version
-=======
->>>>>>> 194ddc33f36e6955587816acd2347bbebeef7912
 
 ac_var = 'WHOOGLE_AUTOCOMPLETE'
 autocomplete_enabled = os.getenv(ac_var, '1')
@@ -112,8 +100,6 @@ def session_required(f):
 def before_request_func():
     global bang_json
 
-<<<<<<< HEAD
-=======
     # Check for latest version if needed
     now = datetime.now()
     if now - timedelta(hours=24) > app.config['LAST_UPDATE_CHECK']:
@@ -122,7 +108,6 @@ def before_request_func():
             app.config['RELEASES_URL'],
             app.config['VERSION_NUMBER'])
 
->>>>>>> 194ddc33f36e6955587816acd2347bbebeef7912
     g.request_params = (
         request.args if request.method == 'GET' else request.form
     )
