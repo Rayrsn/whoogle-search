@@ -6,9 +6,7 @@
     </Description>*
     <InputEncoding>UTF-8</InputEncoding>
     <Image height="16" width="16">{{ main_url }}/static/img/favicon.ico</Image>
-    <Url type="text/html" {{ request_type|safe }} template="{{ main_url }}/search">
-        <Param name="q" value="{searchTerms}"/>
-    </Url>
+    <Url type="text/html" {{ request_type|safe }} template="{{ main_url }}/search?q={searchTerms}"/>
     <Url type="application/x-suggestions+json" {{ request_type|safe }} template="{{ main_url }}/autocomplete">
         <Param name="q" value="{searchTerms}"/>
     </Url>

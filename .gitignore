@@ -10,7 +10,8 @@ flask_session/
 app/static/config
 app/static/custom_config
 app/static/bangs
-
+/.history
+/.vscode
 # pip stuff
 /build/
 dist/
@@ -18,3 +19,5 @@ dist/
 
 # env
 whoogle.env
+/.env
+/.env.save

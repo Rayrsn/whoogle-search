@@ -9,6 +9,7 @@ import json
 import logging.config
 import os
 from stem import Signal
+import threading
 from dotenv import load_dotenv
 
 app = Flask(__name__, static_folder=os.path.dirname(
@@ -29,7 +30,7 @@ if os.getenv('HTTPS_ONLY'):
     app.config['SESSION_COOKIE_NAME'] = '__Secure-session'
     app.config['SESSION_COOKIE_SECURE'] = True
 
-app.config['VERSION_NUMBER'] = '0.7.0'
+app.config['VERSION_NUMBER'] = '0.7.1'
 app.config['APP_ROOT'] = os.getenv(
     'APP_ROOT',
     os.path.dirname(os.path.abspath(__file__)))
@@ -97,7 +98,11 @@ if not os.path.exists(app.config['SESSION_FILE_DIR']):
 if not os.path.exists(app.config['BANG_PATH']):
     os.makedirs(app.config['BANG_PATH'])
 if not os.path.exists(app.config['BANG_FILE']):
-    gen_bangs_json(app.config['BANG_FILE'])
+    json.dump({}, open(app.config['BANG_FILE'], 'w'))
+    bangs_thread = threading.Thread(
+        target=gen_bangs_json,
+        args=(app.config['BANG_FILE'],))
+    bangs_thread.start()
 
 # Build new mapping of static files for cache busting
 if not os.path.exists(app.config['BUILD_FOLDER']):
