@@ -22,6 +22,11 @@ li {
     color: var(--whoogle-text) !important;
 }
 
+.anon-view {
+    color: var(--whoogle-text) !important;
+    text-decoration: underline;
+}
+
 textarea {
     background: var(--whoogle-page-bg) !important;
     color: var(--whoogle-text) !important;
@@ -34,15 +39,21 @@ select {
 
 .ZINbbc {
     overflow: hidden;
-    background-color: var(--whoogle-result-bg) !important;   
+    background-color: var(--whoogle-result-bg) !important;
 }
 
 .BVG0Nb {
-    background-color: var(--whoogle-result-bg) !important; 
+    background-color: var(--whoogle-result-bg) !important;
+}
+
+.ZINbbc.luh4tb {
+    background: var(--whoogle-result-bg) !important;
+    box-shadow: 0 1px 6px rgba(32,33,36,0.28) !important;
+    margin-bottom: 24px !important;
 }
 
 .bRsWnc {
-    background-color: var(--whoogle-result-bg) !important;   
+    background-color: var(--whoogle-result-bg) !important;
 }
 
 .x54gtf {
@@ -185,4 +196,8 @@ path {
 
 .cb:focus {
   color: var(--whoogle-text) !important;
+}
+
+.desktop-header, .mobile-header {
+    background-color: var(--whoogle-result-bg) !important;
 }

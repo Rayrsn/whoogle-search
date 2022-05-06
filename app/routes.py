@@ -1,12 +1,13 @@
 import argparse
 import base64
 import io
+import os
 import json
 import os
 import pickle
 import urllib.parse as urlparse
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from functools import wraps
 
 import waitress
@@ -15,19 +16,24 @@ from app.models.config import Config
 from app.models.endpoint import Endpoint
 from app.request import Request, TorError
 from app.utils.bangs import resolve_bang
-from app.utils.misc import read_config_bool, get_client_ip, get_request_url
+from app.filter import Filter
+from app.utils.misc import read_config_bool, get_client_ip, get_request_url, \
+    check_for_update
 from app.utils.results import add_ip_card, bold_search_terms,\
-    add_currency_card, check_currency
-from app.utils.search import *
+    add_currency_card, check_currency, get_tabs_content
+from app.utils.search import Search, needs_https, has_captcha
 from app.utils.session import generate_user_key, valid_user_session
 from bs4 import BeautifulSoup as bsoup
 from flask import jsonify, make_response, request, redirect, render_template, \
-    send_file, session, url_for
+    send_file, session, url_for, g
 from requests import exceptions, get
 from requests.models import PreparedRequest
+from cryptography.fernet import Fernet, InvalidToken
+from cryptography.exceptions import InvalidSignature
 
 # Load DDG bang json files only on init
 bang_json = json.load(open(app.config['BANG_FILE'])) or {}
+<<<<<<< HEAD
 
 # Check the newest version of WHOOGLE
 update = bsoup(get(app.config['RELEASES_URL']).text, 'html.parser')
@@ -37,6 +43,8 @@ current_version = int(''.join(filter(str.isdigit,
 newest_version = int(''.join(filter(str.isdigit, newest_version)))
 newest_version = '' if current_version >= newest_version \
     else newest_version
+=======
+>>>>>>> 194ddc33f36e6955587816acd2347bbebeef7912
 
 ac_var = 'WHOOGLE_AUTOCOMPLETE'
 autocomplete_enabled = os.getenv(ac_var, '1')
@@ -104,6 +112,17 @@ def session_required(f):
 def before_request_func():
     global bang_json
 
+<<<<<<< HEAD
+=======
+    # Check for latest version if needed
+    now = datetime.now()
+    if now - timedelta(hours=24) > app.config['LAST_UPDATE_CHECK']:
+        app.config['LAST_UPDATE_CHECK'] = now
+        app.config['HAS_UPDATE'] = check_for_update(
+            app.config['RELEASES_URL'],
+            app.config['VERSION_NUMBER'])
+
+>>>>>>> 194ddc33f36e6955587816acd2347bbebeef7912
     g.request_params = (
         request.args if request.method == 'GET' else request.form
     )
@@ -212,7 +231,7 @@ def index():
         return render_template('error.html', error_message=error_message)
 
     return render_template('index.html',
-                           newest_version=newest_version,
+                           has_update=app.config['HAS_UPDATE'],
                            languages=app.config['LANGUAGES'],
                            countries=app.config['COUNTRIES'],
                            themes=app.config['THEMES'],
@@ -249,7 +268,7 @@ def opensearch():
         'opensearch.xml',
         main_url=opensearch_url,
         request_type='' if get_only else 'method="post"'
-    ), 200, {'Content-Disposition': 'attachment; filename="opensearch.xml"'}
+    ), 200, {'Content-Type': 'application/xml'}
 
 
 @app.route(f'/{Endpoint.search_html}', methods=['GET'])
@@ -302,8 +321,8 @@ def search():
     search_util = Search(request, g.user_config, g.session_key)
     query = search_util.new_search_query()
 
-    bang = resolve_bang(query=query, bangs_dict=bang_json)
-    if bang != '':
+    bang = resolve_bang(query, bang_json)
+    if bang:
         return redirect(bang)
 
     # Redirect to home if invalid/blank search
@@ -347,6 +366,12 @@ def search():
         html_soup = bsoup(str(response), 'html.parser')
         response = add_ip_card(html_soup, get_client_ip(request))
 
+    # Update tabs content
+    tabs = get_tabs_content(app.config['HEADER_TABS'],
+                            search_util.full_query,
+                            search_util.search_type,
+                            translation)
+
     # Feature to display currency_card
     conversion = check_currency(str(response))
     if conversion:
@@ -355,7 +380,7 @@ def search():
 
     return render_template(
         'display.html',
-        newest_version=newest_version,
+        has_update=app.config['HAS_UPDATE'],
         query=urlparse.unquote(query),
         search_type=search_util.search_type,
         config=g.user_config,
@@ -373,15 +398,14 @@ def search():
         ) and not search_util.search_type,  # Standard search queries only
         response=response,
         version_number=app.config['VERSION_NUMBER'],
-        search_header=(render_template(
+        search_header=render_template(
             'header.html',
             config=g.user_config,
             logo=render_template('logo.html', dark=g.user_config.dark),
             query=urlparse.unquote(query),
             search_type=search_util.search_type,
-            mobile=g.user_request.mobile)
-                       if 'isch' not in
-                          search_util.search_type else '')), 200
+            mobile=g.user_request.mobile,
+            tabs=tabs))
 
 
 @app.route(f'/{Endpoint.config}', methods=['GET', 'POST', 'PUT'])
@@ -423,22 +447,6 @@ def config():
         return redirect(url_for('.index'), code=403)
 
 
-@app.route(f'/{Endpoint.url}', methods=['GET'])
-@session_required
-@auth_required
-def url():
-    if 'url' in request.args:
-        return redirect(request.args.get('url'))
-
-    q = request.args.get('q')
-    if len(q) > 0 and 'http' in q:
-        return redirect(q)
-    else:
-        return render_template(
-            'error.html',
-            error_message='Unable to resolve query: ' + q)
-
-
 @app.route(f'/{Endpoint.imgres}')
 @session_required
 @auth_required
@@ -450,8 +458,16 @@ def imgres():
 @session_required
 @auth_required
 def element():
-    cipher_suite = Fernet(g.session_key)
-    src_url = cipher_suite.decrypt(request.args.get('url').encode()).decode()
+    element_url = src_url = request.args.get('url')
+    if element_url.startswith('gAAAAA'):
+        try:
+            cipher_suite = Fernet(g.session_key)
+            src_url = cipher_suite.decrypt(element_url.encode()).decode()
+        except (InvalidSignature, InvalidToken) as e:
+            return render_template(
+                'error.html',
+                error_message=str(e)), 401
+
     src_type = request.args.get('type')
 
     try:
@@ -470,18 +486,62 @@ def element():
 
 
 @app.route(f'/{Endpoint.window}')
+@session_required
 @auth_required
 def window():
-    get_body = g.user_request.send(base_url=request.args.get('location')).text
-    get_body = get_body.replace('src="/',
-                                'src="' + request.args.get('location') + '"')
-    get_body = get_body.replace('href="/',
-                                'href="' + request.args.get('location') + '"')
+    target_url = request.args.get('location')
+    if target_url.startswith('gAAAAA'):
+        cipher_suite = Fernet(g.session_key)
+        target_url = cipher_suite.decrypt(target_url.encode()).decode()
+
+    content_filter = Filter(
+        g.session_key,
+        root_url=request.url_root,
+        config=g.user_config)
+    target = urlparse.urlparse(target_url)
+    host_url = f'{target.scheme}://{target.netloc}'
+
+    get_body = g.user_request.send(base_url=target_url).text
 
     results = bsoup(get_body, 'html.parser')
+    src_attrs = ['src', 'href', 'srcset', 'data-srcset', 'data-src']
 
-    for script in results('script'):
-        script.decompose()
+    # Parse HTML response and replace relative links w/ absolute
+    for element in results.find_all():
+        for attr in src_attrs:
+            if not element.has_attr(attr) or not element[attr].startswith('/'):
+                continue
+
+            element[attr] = host_url + element[attr]
+
+    # Replace or remove javascript sources
+    for script in results.find_all('script', {'src': True}):
+        if 'nojs' in request.args:
+            script.decompose()
+        else:
+            content_filter.update_element_src(script, 'application/javascript')
+
+    # Replace all possible image attributes
+    img_sources = ['src', 'data-src', 'data-srcset', 'srcset']
+    for img in results.find_all('img'):
+        _ = [
+            content_filter.update_element_src(img, 'image/png', attr=_)
+            for _ in img_sources if img.has_attr(_)
+        ]
+
+    # Replace all stylesheet sources
+    for link in results.find_all('link', {'href': True}):
+        content_filter.update_element_src(link, 'text/css', attr='href')
+
+    # Use anonymous view for all links on page
+    for a in results.find_all('a', {'href': True}):
+        a['href'] = '/window?location=' + a['href'] + (
+            '&nojs=1' if 'nojs' in request.args else '')
+
+    # Remove all iframes -- these are commonly used inside of <noscript> tags
+    # to enforce loading Google Analytics
+    for iframe in results.find_all('iframe'):
+        iframe.decompose()
 
     return render_template(
         'display.html',
@@ -505,6 +565,11 @@ def run_app() -> None:
         default='127.0.0.1',
         metavar='<ip address>',
         help='Specifies the host address to use (default 127.0.0.1)')
+    parser.add_argument(
+        '--unix-socket',
+        default='',
+        metavar='</path/to/unix.sock>',
+        help='Listen for app on unix socket instead of host:port')
     parser.add_argument(
         '--debug',
         default=False,
@@ -555,5 +620,10 @@ def run_app() -> None:
 
     if args.debug:
         app.run(host=args.host, port=args.port, debug=args.debug)
+    elif args.unix_socket:
+        waitress.serve(app, unix_socket=args.unix_socket)
     else:
-        waitress.serve(app, listen="{}:{}".format(args.host, args.port))
+        waitress.serve(
+            app,
+            listen="{}:{}".format(args.host, args.port),
+            url_prefix=os.environ.get('WHOOGLE_URL_PREFIX', ''))

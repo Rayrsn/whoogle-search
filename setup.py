@@ -1,14 +1,11 @@
 import os
 import setuptools
 
-long_description = open('README.md', 'r').read()
-
-requirements = list(open('requirements.txt', 'r'))
-
 optional_dev_tag = ''
 if os.getenv('DEV_BUILD'):
     optional_dev_tag = '.dev' + os.getenv('DEV_BUILD')
 
+<<<<<<< HEAD
 setuptools.setup(
     author='Ben Busby',
     author_email='contact@benbusby.com',
@@ -32,3 +29,6 @@ setuptools.setup(
         'Operating System :: OS Independent',
     ],
 )
+=======
+setuptools.setup(version='0.7.2' + optional_dev_tag)
+>>>>>>> 194ddc33f36e6955587816acd2347bbebeef7912
