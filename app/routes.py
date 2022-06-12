@@ -81,7 +81,7 @@ def session_required(f):
                     if isinstance(data, dict) and 'valid' in data:
                         continue
                     invalid_sessions.append(session_path)
-            except (EOFError, FileNotFoundError):
+            except (EOFError, FileNotFoundError, pickle.UnpicklingError):
                 pass
 
         for invalid_session in invalid_sessions:
@@ -520,7 +520,7 @@ def window():
 
     # Use anonymous view for all links on page
     for a in results.find_all('a', {'href': True}):
-        a['href'] = '/window?location=' + a['href'] + (
+        a['href'] = f'{Endpoint.window}?location=' + a['href'] + (
             '&nojs=1' if 'nojs' in request.args else '')
 
     # Remove all iframes -- these are commonly used inside of <noscript> tags

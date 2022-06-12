@@ -1,18 +1,13 @@
-from app.models.config import Config
-from app.models.endpoint import Endpoint
+import cssutils
+from bs4 import BeautifulSoup
+from bs4.element import ResultSet, Tag
+from cryptography.fernet import Fernet
+from flask import render_template
+
 from app.models.g_classes import GClasses
 from app.request import VALID_PARAMS, MAPS_URL
 from app.utils.misc import get_abs_url, read_config_bool
 from app.utils.results import *
-from bs4 import BeautifulSoup
-from bs4.element import ResultSet, Tag
-from cryptography.fernet import Fernet
-import cssutils
-from flask import render_template
-import re
-import urllib.parse as urlparse
-from urllib.parse import parse_qs
-import os
 
 minimal_mode_sections = ['Top stories', 'Images', 'People also ask']
 unsupported_g_pages = [
@@ -89,11 +84,13 @@ class Filter:
             config: Config,
             root_url='',
             page_url='',
+            query='',
             mobile=False) -> None:
         self.config = config
         self.mobile = mobile
         self.user_key = user_key
         self.page_url = page_url
+        self.query = query
         self.main_divs = ResultSet('')
         self._elements = 0
         self._av = set()
@@ -357,6 +354,9 @@ class Filter:
             # print(link)
 
     def update_styling(self, soup) -> None:
+        # Update CSS classes for result divs
+        soup = GClasses.replace_css_classes(soup)
+
         # Remove unnecessary button(s)
         for button in soup.find_all('button'):
             button.decompose()
@@ -410,8 +410,10 @@ class Filter:
             None (the tag is updated directly)
 
         """
+        link_netloc = urlparse.urlparse(link['href']).netloc
+
         # Remove any elements that direct to unsupported Google pages
-        if any(url in link['href'] for url in unsupported_g_pages):
+        if any(url in link_netloc for url in unsupported_g_pages):
             # FIXME: The "Shopping" tab requires further filtering (see #136)
             # Temporarily removing all links to that tab for now.
             parent = link.parent
@@ -427,7 +429,7 @@ class Filter:
         result_link = urlparse.urlparse(href)
         q = extract_q(result_link.query, href)
 
-        if q.startswith('/'):
+        if q.startswith('/') and q not in self.query:
             # Internal google links (i.e. mail, maps, etc) should still
             # be forwarded to Google
             link['href'] = 'https://google.com' + q
@@ -529,7 +531,7 @@ class Filter:
                 continue
 
             img_url = urlparse.unquote(urls[0].replace(
-                f'{Endpoint.imgres}?imgurl=', ''))
+                f'/{Endpoint.imgres}?imgurl=', ''))
 
             try:
                 # Try to strip out only the necessary part of the web page link
