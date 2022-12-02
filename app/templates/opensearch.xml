@@ -1,13 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <OpenSearchDescription xmlns="http://a9.com/-/spec/opensearch/1.1/"
                        xmlns:moz="http://www.mozilla.org/2006/browser/search/">
-<ShortName>Rayr Whoogle</ShortName>
-<Description>Rayr Whoogle: A fork of a lightweight, deployable Google search proxy for desktop/mobile that removes Javascript, AMP links, and ads
-    </Description>*
+    {% if not search_type %}
+        <ShortName>Rayr Whoogle</ShortName>
+    {% else %}
+        <ShortName>Rayr Whoogle {{ search_name }}</ShortName>
+    {% endif %}
+    <Description>Rayr Whoogle: A fork of a lightweight, deployable Google search proxy for desktop/mobile that removes Javascript, AMP links, and ads
+    </Description>
     <InputEncoding>UTF-8</InputEncoding>
-    <Image height="16" width="16">{{ main_url }}/static/img/favicon.ico</Image>
+    <Image height="60" width="60">{{ main_url }}/static/img/favicon.ico</Image>
     <Url type="text/html" {{ request_type|safe }} template="{{ main_url }}/search">
         <Param name="q" value="{searchTerms}"/>
+        {% if search_type %}
+            <Param name="tbm" value="{{ search_type }}"/>
+        {% endif %}
+        {% if preferences %}
+            <Param name="preferences" value="{{ preferences }}"/>
+        {% endif %}
     </Url>
     <Url type="application/x-suggestions+json" {{ request_type|safe }} template="{{ main_url }}/autocomplete">
         <Param name="q" value="{searchTerms}"/>

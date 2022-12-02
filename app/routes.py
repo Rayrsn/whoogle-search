@@ -1,7 +1,6 @@
 import argparse
 import base64
 import io
-import os
 import json
 import os
 import pickle
@@ -16,6 +15,7 @@ from app.models.config import Config
 from app.models.endpoint import Endpoint
 from app.request import Request, TorError
 from app.utils.bangs import resolve_bang
+from app.utils.misc import get_proxy_host_url
 from app.filter import Filter
 from app.utils.misc import read_config_bool, get_client_ip, get_request_url, \
     check_for_update
@@ -26,7 +26,7 @@ from app.utils.session import generate_user_key, valid_user_session
 from bs4 import BeautifulSoup as bsoup
 from flask import jsonify, make_response, request, redirect, render_template, \
     send_file, session, url_for, g
-from requests import exceptions, get
+from requests import exceptions
 from requests.models import PreparedRequest
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.exceptions import InvalidSignature
@@ -36,6 +36,12 @@ bang_json = json.load(open(app.config['BANG_FILE'])) or {}
 
 ac_var = 'WHOOGLE_AUTOCOMPLETE'
 autocomplete_enabled = os.getenv(ac_var, '1')
+
+
+def get_search_name(tbm):
+    for tab in app.config['HEADER_TABS'].values():
+        if tab['tbm'] == tbm:
+            return tab['name']
 
 
 def auth_required(f):
@@ -61,8 +67,7 @@ def auth_required(f):
 def session_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if (valid_user_session(session) and
-                'cookies_disabled' not in request.args):
+        if (valid_user_session(session)):
             g.session_key = session['key']
         else:
             session.pop('_permanent', None)
@@ -71,17 +76,25 @@ def session_required(f):
         # Clear out old sessions
         invalid_sessions = []
         for user_session in os.listdir(app.config['SESSION_FILE_DIR']):
-            session_path = os.path.join(
+            file_path = os.path.join(
                 app.config['SESSION_FILE_DIR'],
                 user_session)
+
             try:
-                with open(session_path, 'rb') as session_file:
+                # Ignore files that are larger than the max session file size
+                if os.path.getsize(file_path) > app.config['MAX_SESSION_SIZE']:
+                    continue
+
+                with open(file_path, 'rb') as session_file:
                     _ = pickle.load(session_file)
                     data = pickle.load(session_file)
                     if isinstance(data, dict) and 'valid' in data:
                         continue
-                    invalid_sessions.append(session_path)
-            except (EOFError, FileNotFoundError):
+                    invalid_sessions.append(file_path)
+            except Exception:
+                # Broad exception handling here due to how instances installed
+                # with pip seem to have issues storing unrelated files in the
+                # same directory as sessions
                 pass
 
         for invalid_session in invalid_sessions:
@@ -99,6 +112,7 @@ def session_required(f):
 @app.before_request
 def before_request_func():
     global bang_json
+    session.permanent = True
 
     # Check for latest version if needed
     now = datetime.now()
@@ -112,40 +126,17 @@ def before_request_func():
         request.args if request.method == 'GET' else request.form
     )
 
-    # Skip pre-request actions if verifying session
-    if '/session' in request.path and not valid_user_session(session):
-        return
-
     default_config = json.load(open(app.config['DEFAULT_CONFIG'])) \
         if os.path.exists(app.config['DEFAULT_CONFIG']) else {}
 
     # Generate session values for user if unavailable
-    if (not valid_user_session(session) and
-            'cookies_disabled' not in request.args):
+    if (not valid_user_session(session)):
         session['config'] = default_config
         session['uuid'] = str(uuid.uuid4())
         session['key'] = generate_user_key()
 
-        # Skip checking for session on any searches that don't
-        # require a valid session
-        if (not Endpoint.autocomplete.in_path(request.path) and
-                not Endpoint.healthz.in_path(request.path) and
-                not Endpoint.opensearch.in_path(request.path)):
-            return redirect(url_for(
-                'session_check',
-                session_id=session['uuid'],
-                follow=get_request_url(request.url)), code=307)
-        else:
-            g.user_config = Config(**session['config'])
-    elif 'cookies_disabled' not in request.args:
-        # Set session as permanent
-        session.permanent = True
-        app.permanent_session_lifetime = timedelta(days=365)
-        g.user_config = Config(**session['config'])
-    else:
-        # User has cookies disabled, fall back to immutable default config
-        session.pop('_permanent', None)
-        g.user_config = Config(**default_config)
+    # Establish config values per user session
+    g.user_config = Config(**session['config'])
 
     if not g.user_config.url:
         g.user_config.url = get_request_url(request.url_root)
@@ -192,19 +183,6 @@ def healthz():
     return ''
 
 
-@app.route(f'/{Endpoint.session}/<session_id>', methods=['GET', 'PUT', 'POST'])
-def session_check(session_id):
-    if 'uuid' in session and session['uuid'] == session_id:
-        session['valid'] = True
-        return redirect(request.args.get('follow'), code=307)
-    else:
-        follow_url = request.args.get('follow')
-        req = PreparedRequest()
-        req.prepare_url(follow_url, {'cookies_disabled': 1})
-        session.pop('_permanent', None)
-        return redirect(req.url, code=307)
-
-
 @app.route('/', methods=['GET'])
 @app.route(f'/{Endpoint.home}', methods=['GET'])
 @auth_required
@@ -214,6 +192,9 @@ def index():
         error_message = session['error_message']
         session['error_message'] = ''
         return render_template('error.html', error_message=error_message)
+
+    # Update user config if specified in search args
+    g.user_config = g.user_config.from_params(g.request_params)
 
     return render_template('index.html',
                            has_update=app.config['HAS_UPDATE'],
@@ -229,8 +210,7 @@ def index():
                                dark=g.user_config.dark),
                            config_disabled=(
                                    app.config['CONFIG_DISABLE'] or
-                                   not valid_user_session(session) or
-                                   'cookies_disabled' in request.args),
+                                   not valid_user_session(session)),
                            config=g.user_config,
                            tor_available=int(os.environ.get('TOR_AVAILABLE')),
                            version_number=app.config['VERSION_NUMBER'])
@@ -252,7 +232,10 @@ def opensearch():
     return render_template(
         'opensearch.xml',
         main_url=opensearch_url,
-        request_type='' if get_only else 'method="post"'
+        request_type='' if get_only else 'method="post"',
+        search_type=request.args.get('tbm'),
+        search_name=get_search_name(request.args.get('tbm')),
+        preferences=g.user_config.preferences
     ), 200, {'Content-Type': 'application/xml'}
 
 
@@ -343,7 +326,7 @@ def search():
             farside='https://farside.link',
             config=g.user_config,
             query=urlparse.unquote(query),
-            params=g.user_config.to_params()), 503
+            params=g.user_config.to_params(keys=['preferences'])), 503
     response = bold_search_terms(response, query)
 
     # Feature to display IP address
@@ -355,6 +338,7 @@ def search():
     tabs = get_tabs_content(app.config['HEADER_TABS'],
                             search_util.full_query,
                             search_util.search_type,
+                            g.user_config.preferences,
                             translation)
 
     # Feature to display currency_card
@@ -363,11 +347,15 @@ def search():
         html_soup = bsoup(str(response), 'html.parser')
         response = add_currency_card(html_soup, conversion)
 
+    preferences = g.user_config.preferences
+    home_url = f"home?preferences={preferences}" if preferences else "home"
+
     return render_template(
         'display.html',
         has_update=app.config['HAS_UPDATE'],
         query=urlparse.unquote(query),
         search_type=search_util.search_type,
+        search_name=get_search_name(search_util.search_type),
         config=g.user_config,
         autocomplete_enabled=autocomplete_enabled,
         lingva_url=app.config['TRANSLATE_URL'],
@@ -385,7 +373,11 @@ def search():
         version_number=app.config['VERSION_NUMBER'],
         search_header=render_template(
             'header.html',
+            home_url=home_url,
             config=g.user_config,
+            translation=translation,
+            languages=app.config['LANGUAGES'],
+            countries=app.config['COUNTRIES'],
             logo=render_template('logo.html', dark=g.user_config.dark),
             query=urlparse.unquote(query),
             search_type=search_util.search_type,
@@ -520,7 +512,7 @@ def window():
 
     # Use anonymous view for all links on page
     for a in results.find_all('a', {'href': True}):
-        a['href'] = '/window?location=' + a['href'] + (
+        a['href'] = f'{Endpoint.window}?location=' + a['href'] + (
             '&nojs=1' if 'nojs' in request.args else '')
 
     # Remove all iframes -- these are commonly used inside of <noscript> tags

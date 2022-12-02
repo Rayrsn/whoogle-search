@@ -25,7 +25,7 @@ BLACKLIST = [
     'Reklama', 'Реклама', 'Anunț', '광고', 'annons', 'Annonse', 'Iklan',
     '広告', 'Augl.', 'Mainos', 'Advertentie', 'إعلان', 'Գովազդ', 'विज्ञापन',
     'Reklam', 'آگهی', 'Reklāma', 'Reklaam', 'Διαφήμιση', 'מודעה', 'Hirdetés',
-    'Anúncio'
+    'Anúncio', 'Quảng cáo','โฆษณา', 'sponsored', 'patrocinado', 'gesponsert'
 ]
 
 SITE_ALTS = {
@@ -34,11 +34,14 @@ SITE_ALTS = {
     'instagram.com': os.getenv('WHOOGLE_ALT_IG', 'farside.link/bibliogram/u'),
     'reddit.com': os.getenv('WHOOGLE_ALT_RD', 'farside.link/libreddit'),
     **dict.fromkeys([
-        'medium.com',
+        '.medium.com',
+        '//medium.com',
         'levelup.gitconnected.com'
     ], os.getenv('WHOOGLE_ALT_MD', 'farside.link/scribe')),
     'imgur.com': os.getenv('WHOOGLE_ALT_IMG', 'farside.link/rimgo'),
-    'wikipedia.org': os.getenv('WHOOGLE_ALT_WIKI', 'farside.link/wikiless')
+    'wikipedia.org': os.getenv('WHOOGLE_ALT_WIKI', 'farside.link/wikiless'),
+    'imdb.com': os.getenv('WHOOGLE_ALT_IMDB', 'farside.link/libremdb'),
+    'quora.com': os.getenv('WHOOGLE_ALT_QUORA', 'farside.link/quetre')
 }
 
 
@@ -61,20 +64,23 @@ def bold_search_terms(response: str, query: str) -> BeautifulSoup:
         if len(element) == len(target_word):
             return
 
-        if not re.match('.*[a-zA-Z0-9].*', target_word) or (
+        # Ensure target word is escaped for regex
+        target_word = re.escape(target_word)
+
+        if re.match('.*[@_!#$%^&*()<>?/\|}{~:].*', target_word) or (
                 element.parent and element.parent.name == 'style'):
             return
 
         element.replace_with(BeautifulSoup(
             re.sub(fr'\b((?![{{}}<>-]){target_word}(?![{{}}<>-]))\b',
                    r'<b>\1</b>',
-                   html.escape(element),
+                   element,
                    flags=re.I), 'html.parser')
         )
 
     # Split all words out of query, grouping the ones wrapped in quotes
     for word in re.split(r'\s+(?=[^"]*(?:"[^"]*"[^"]*)*$)', query):
-        word = re.sub(r'[^A-Za-z0-9 ]+', '', word)
+        word = re.sub(r'[@_!#$%^&*()<>?/\|}{~:]+', '', word)
         target = response.find_all(
             text=re.compile(r'' + re.escape(word), re.I))
         for nav_str in target:
@@ -128,13 +134,38 @@ def get_site_alt(link: str) -> str:
     """
     # Need to replace full hostname with alternative to encapsulate
     # subdomains as well
-    hostname = urlparse.urlparse(link).hostname
+    parsed_link = urlparse.urlparse(link)
+    hostname = parsed_link.hostname
+
+    # The full scheme + hostname is used when comparing against the list of
+    # available alternative services, due to how Medium links are constructed.
+    # (i.e. for medium.com: "https://something.medium.com" should match,
+    # "https://medium.com/..." should match, but "philomedium.com" should not)
+    hostcomp = f'{parsed_link.scheme}://{hostname}'
 
     for site_key in SITE_ALTS.keys():
         if not hostname or site_key not in hostname or not SITE_ALTS[site_key]:
             continue
 
-        link = link.replace(hostname, SITE_ALTS[site_key])
+        # Wikipedia -> Wikiless replacements require the subdomain (if it's
+        # a 2-char language code) to be passed as a URL param to Wikiless
+        # in order to preserve the language setting.
+        params = ''
+        if 'wikipedia' in hostname:
+            subdomain = hostname.split('.')[0]
+            if len(subdomain) == 2:
+                params = f'?lang={subdomain}'
+
+        parsed_alt = urlparse.urlparse(SITE_ALTS[site_key])
+        link = link.replace(hostname, SITE_ALTS[site_key]) + params
+
+        # If a scheme is specified in the alternative, this results in a
+        # replaced link that looks like "https://http://altservice.tld".
+        # In this case, we can remove the original scheme from the result
+        # and use the one specified for the alt.
+        if parsed_alt.scheme:
+            link = '//'.join(link.split('//')[1:])
+
         for prefix in SKIP_PREFIX:
             link = link.replace(prefix, '//')
         break
@@ -267,7 +298,10 @@ def check_currency(response: str) -> dict:
     if currency_link:
         while 'class' not in currency_link.attrs or \
                 'ZINbbc' not in currency_link.attrs['class']:
-            currency_link = currency_link.parent
+            if currency_link.parent:
+                currency_link = currency_link.parent
+            else:
+                return {}
         currency_link = currency_link.find_all(class_='BNeawe')
         currency1 = currency_link[0].text
         currency2 = currency_link[1].text
@@ -369,6 +403,7 @@ def add_currency_card(soup: BeautifulSoup,
 def get_tabs_content(tabs: dict,
                      full_query: str,
                      search_type: str,
+                     preferences: str,
                      translation: dict) -> dict:
     """Takes the default tabs content and updates it according to the query.
 
@@ -392,6 +427,9 @@ def get_tabs_content(tabs: dict,
 
         if tab_content['tbm'] is not None:
             query = f"{query}&tbm={tab_content['tbm']}"
+
+        if preferences:
+            query = f"{query}&preferences={preferences}"
 
         tab_content['href'] = tab_content['href'].format(query=query)
 

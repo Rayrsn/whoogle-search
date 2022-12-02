@@ -66,6 +66,8 @@ select {
     overflow: hidden;
     box-shadow: 0 0 0 0 !important;
     background-color: var(--whoogle-dark-result-bg) !important;
+    margin-bottom: 10px !important;
+    border-radius: 8px !important;
 }
 
 .KP7LCb {
@@ -141,7 +143,7 @@ select {
     color: var(--whoogle-dark-contrast-text) !important;
 }
 
-.content {
+.content, .result-config {
     background-color: var(--whoogle-dark-element-bg) !important;
     color: var(--whoogle-contrast-text) !important;
 }

@@ -1,4 +1,5 @@
 from app.models.config import Config
+from app.utils.misc import read_config_bool
 from datetime import datetime
 from defusedxml import ElementTree as ET
 import random
@@ -7,7 +8,9 @@ from requests import Response, ConnectionError
 import urllib.parse as urlparse
 import os
 from stem import Signal, SocketError
+from stem.connection import AuthenticationFailure
 from stem.control import Controller
+from stem.connection import authenticate_cookie, authenticate_password
 
 MAPS_URL = 'https://maps.google.com/maps'
 AUTOCOMPLETE_URL = ('https://suggestqueries.google.com/'
@@ -37,13 +40,33 @@ class TorError(Exception):
 
 
 def send_tor_signal(signal: Signal) -> bool:
+    use_pass = read_config_bool('WHOOGLE_TOR_USE_PASS')
+
+    confloc = './misc/tor/control.conf'
+    # Check that the custom location of conf is real.
+    temp = os.getenv('WHOOGLE_TOR_CONF', '')
+    if os.path.isfile(temp):
+        confloc = temp
+
+    # Attempt to authenticate and send signal.
     try:
         with Controller.from_port(port=9051) as c:
-            c.authenticate()
+            if use_pass:
+                with open(confloc, "r") as conf:
+                    # Scan for the last line of the file.
+                    for line in conf:
+                        pass
+                    secret = line.strip('\n')
+                authenticate_password(c, password=secret)
+            else:
+                cookie_path = '/var/lib/tor/control_auth_cookie'
+                authenticate_cookie(c, cookie_path=cookie_path)
             c.signal(signal)
             os.environ['TOR_AVAILABLE'] = '1'
             return True
-    except (SocketError, ConnectionRefusedError, ConnectionError):
+    except (SocketError, AuthenticationFailure,
+            ConnectionRefusedError, ConnectionError):
+        # TODO: Handle Tor authentication (password and cookie)
         os.environ['TOR_AVAILABLE'] = '0'
 
     return False
@@ -165,6 +188,8 @@ class Request:
             config.lang_search if config.lang_search else ''
         )
 
+        self.country = config.country if config.country else ''
+
         # For setting Accept-language Header
         self.lang_interface = ''
         if config.accept_language:
@@ -221,7 +246,11 @@ class Request:
         """
         ac_query = dict(q=query)
         if self.language:
-            ac_query['hl'] = self.language
+            ac_query['lr'] = self.language
+        if self.country:
+            ac_query['gl'] = self.country
+        if self.lang_interface:
+            ac_query['hl'] = self.lang_interface
 
         response = self.send(base_url=AUTOCOMPLETE_URL,
                              query=urlparse.urlencode(ac_query)).text

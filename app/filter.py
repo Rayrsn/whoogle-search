@@ -1,18 +1,24 @@
-from app.models.config import Config
-from app.models.endpoint import Endpoint
-from app.models.g_classes import GClasses
-from app.request import VALID_PARAMS, MAPS_URL
-from app.utils.misc import get_abs_url, read_config_bool
-from app.utils.results import *
+import cssutils
 from bs4 import BeautifulSoup
 from bs4.element import ResultSet, Tag
 from cryptography.fernet import Fernet
-import cssutils
 from flask import render_template
-import re
 import urllib.parse as urlparse
 from urllib.parse import parse_qs
-import os
+import re
+
+from app.models.g_classes import GClasses
+from app.request import VALID_PARAMS, MAPS_URL
+from app.utils.misc import get_abs_url, read_config_bool
+from app.utils.results import (
+    BLANK_B64, GOOG_IMG, GOOG_STATIC, G_M_LOGO_URL, LOGO_URL, SITE_ALTS,
+    has_ad_content, filter_link_args, append_anon_view, get_site_alt,
+)
+from app.models.endpoint import Endpoint
+from app.models.config import Config
+
+
+MAPS_ARGS = ['q', 'daddr']
 
 minimal_mode_sections = ['Top stories', 'Images', 'People also ask']
 unsupported_g_pages = [
@@ -39,6 +45,28 @@ def extract_q(q_str: str, href: str) -> str:
         str: The 'q' element of the link, or an empty string
     """
     return parse_qs(q_str)['q'][0] if ('&q=' in href or '?q=' in href) else ''
+
+
+def build_map_url(href: str) -> str:
+    """Tries to extract known args that explain the location in the url. If a
+    location is found, returns the default url with it. Otherwise, returns the
+    url unchanged.
+
+    Args:
+        href: The full url to check.
+
+    Returns:
+        str: The parsed url, or the url unchanged.
+    """
+    # parse the url
+    parsed_url = parse_qs(href)
+    # iterate through the known parameters and try build the url
+    for param in MAPS_ARGS:
+        if param in parsed_url:
+            return MAPS_URL + "?q=" + parsed_url[param][0]
+
+    # query could not be extracted returning unchanged url
+    return href
 
 
 def clean_query(query: str) -> str:
@@ -89,11 +117,13 @@ class Filter:
             config: Config,
             root_url='',
             page_url='',
+            query='',
             mobile=False) -> None:
         self.config = config
         self.mobile = mobile
         self.user_key = user_key
         self.page_url = page_url
+        self.query = query
         self.main_divs = ResultSet('')
         self._elements = 0
         self._av = set()
@@ -357,6 +387,9 @@ class Filter:
             # print(link)
 
     def update_styling(self, soup) -> None:
+        # Update CSS classes for result divs
+        soup = GClasses.replace_css_classes(soup)
+
         # Remove unnecessary button(s)
         for button in soup.find_all('button'):
             button.decompose()
@@ -410,16 +443,42 @@ class Filter:
             None (the tag is updated directly)
 
         """
+        parsed_link = urlparse.urlparse(link['href'])
+        link_netloc = ''
+        if '/url?q=' in link['href']:
+            link_netloc = extract_q(parsed_link.query, link['href'])
+        else:
+            link_netloc = parsed_link.netloc
+
         # Remove any elements that direct to unsupported Google pages
-        if any(url in link['href'] for url in unsupported_g_pages):
+        if any(url in link_netloc for url in unsupported_g_pages):
             # FIXME: The "Shopping" tab requires further filtering (see #136)
             # Temporarily removing all links to that tab for now.
+            
+            # Replaces the /url google unsupported link to the direct url
+            link['href'] = link_netloc
             parent = link.parent
-            while parent:
-                p_cls = parent.attrs.get('class') or []
-                if parent.name == 'footer' or f'{GClasses.footer}' in p_cls:
-                    link.decompose()
-                parent = parent.parent
+
+            if 'google.com/preferences?hl=' in link_netloc:
+                # Handle case where a search is performed in a different
+                # language than what is configured. This usually returns a
+                # div with the same classes as normal search results, but with
+                # a link to configure language preferences through Google.
+                # Since we want all language config done through Whoogle, we
+                # can safely decompose this element.
+                while parent:
+                    p_cls = parent.attrs.get('class') or []
+                    if f'{GClasses.result_class_a}' in p_cls:
+                        parent.decompose()
+                        break
+                    parent = parent.parent
+            else:
+                # Remove cases where google links appear in the footer
+                while parent:
+                    p_cls = parent.attrs.get('class') or []
+                    if parent.name == 'footer' or f'{GClasses.footer}' in p_cls:
+                        link.decompose()
+                    parent = parent.parent
             return
 
         # Replace href with only the intended destination (no "utm" type tags)
@@ -427,7 +486,7 @@ class Filter:
         result_link = urlparse.urlparse(href)
         q = extract_q(result_link.query, href)
 
-        if q.startswith('/'):
+        if q.startswith('/') and q not in self.query and 'spell=1' not in href:
             # Internal google links (i.e. mail, maps, etc) should still
             # be forwarded to Google
             link['href'] = 'https://google.com' + q
@@ -460,12 +519,10 @@ class Filter:
                 self._av.add(netloc)
                 append_anon_view(link, self.config)
 
-            if self.config.new_tab:
-                link['target'] = '_blank'
         else:
             if href.startswith(MAPS_URL):
                 # Maps links don't work if a site filter is applied
-                link['href'] = MAPS_URL + "?q=" + clean_query(q)
+                link['href'] = build_map_url(link['href'])
             elif (href.startswith('/?') or href.startswith('/search?') or
                   href.startswith('/imgres?')):
                 # make sure that tags can be clicked as relative URLs
@@ -479,6 +536,12 @@ class Filter:
                 return
             else:
                 link['href'] = href
+
+        if self.config.new_tab and (
+            link["href"].startswith("http")
+            or link["href"].startswith("imgres?")
+        ):
+            link["target"] = "_blank"
 
         # Replace link location if "alts" config is enabled
         if self.config.alts:
@@ -529,7 +592,7 @@ class Filter:
                 continue
 
             img_url = urlparse.unquote(urls[0].replace(
-                f'{Endpoint.imgres}?imgurl=', ''))
+                f'/{Endpoint.imgres}?imgurl=', ''))
 
             try:
                 # Try to strip out only the necessary part of the web page link

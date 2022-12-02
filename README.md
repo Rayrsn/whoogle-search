@@ -4,9 +4,15 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![tests](https://github.com/benbusby/whoogle-search/actions/workflows/tests.yml/badge.svg)](https://github.com/benbusby/whoogle-search/actions/workflows/tests.yml)
 [![buildx](https://github.com/benbusby/whoogle-search/actions/workflows/buildx.yml/badge.svg)](https://github.com/benbusby/whoogle-search/actions/workflows/buildx.yml)
-[![pep8](https://github.com/benbusby/whoogle-search/workflows/pep8/badge.svg)](https://github.com/benbusby/whoogle-search/actions?query=workflow%3Apep8)
 [![codebeat badge](https://codebeat.co/badges/e96cada2-fb6f-4528-8285-7d72abd74e8d)](https://codebeat.co/projects/github-com-benbusby-shoogle-master)
 [![Docker Pulls](https://img.shields.io/docker/pulls/benbusby/whoogle-search)](https://hub.docker.com/r/benbusby/whoogle-search)
+
+<table>
+  <tr>
+    <td><a href="https://sr.ht/~benbusby/whoogle-search">SourceHut</a></td>
+    <td><a href="https://github.com/benbusby/whoogle-search">GitHub</a></td>
+  </tr>
+</table>
 
 Get Google search results, but without any ads, javascript, AMP links, cookies, or IP address tracking. Easily deployable in one click as a Docker app, and customizable with a single config file. Quick and simple to implement as a primary search engine replacement on both desktop and mobile.
 
@@ -30,13 +36,12 @@ Contents
     2. [Prevent Downtime (Heroku Only)](#prevent-downtime-heroku-only)
     3. [Manual HTTPS Enforcement](#https-enforcement)
     4. [Using with Firefox Containers](#using-with-firefox-containers)
+    5. [Reverse Proxying](#reverse-proxying)
+        1. [Nginx](#nginx)
 7. [Contributing](#contributing)
 8. [FAQ](#faq)
 9. [Public Instances](#public-instances)
 10. [Screenshots](#screenshots)
-11. Mirrors (read-only)
-    1. [GitLab](https://gitlab.com/benbusby/whoogle-search)
-    2. [Gogs](https://gogs.benbusby.com/benbusby/whoogle-search)
 
 ## Features
 - No ads or sponsored content
@@ -81,12 +86,11 @@ There are a few different ways to begin using the app, depending on your prefere
 [![Deploy](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/benbusby/whoogle-search/tree/main)
 
 Provides:
-- Free deployment of app
-- Free HTTPS url (https://\<your app name\>.herokuapp.com)
-- Downtime after periods of inactivity \([solution](https://github.com/benbusby/whoogle-search#prevent-downtime-heroku-only)\)
+- Easy Deployment of App
+- A HTTPS url (https://\<your app name\>.herokuapp.com)
 
 Notes:
-- Requires a (free) Heroku account
+- Requires a **PAID** Heroku Account.
 - Sometimes has issues with auto-redirecting to `https`. Make sure to navigate to the `https` version of your app before adding as a default search engine.
 
 ### B) [Repl.it](https://repl.it)
@@ -102,29 +106,18 @@ Provides:
 
 ### C) [Fly.io](https://fly.io)
 
-You will need a [Fly.io](https://fly.io) account to do this. Fly requires a credit card to deploy anything, but you can have up to 3 shared-CPU VMs running full-time each month for free.
+You will need a **PAID** [Fly.io](https://fly.io) account to deploy Whoogle.
 
-#### Install the CLI:
+#### Install the CLI: https://fly.io/docs/hands-on/installing/
 
-```bash
-curl -L https://fly.io/install.sh | sh
-```
-
-#### Deploy your app
+#### Deploy the app
 
 ```bash
-fly apps create --org personal --port 5000
-# Choose a name and the Image builder
-# Enter `benbusby/whoogle-search:latest` as the image name
-fly deploy
+flyctl auth login
+flyctl launch --image benbusby/whoogle-search:latest
 ```
 
 Your app is now available at `https://<app-name>.fly.dev`.
-
-You can customize the `fly.toml`:
-- Remove the non-https service
-- Add environment variables under the `[env]` key
-  - Use `fly secrets set NAME=value` for more sensitive values like `WHOOGLE_PASS` and `WHOOGLE_PROXY_PASS`.
 
 ### D) [pipx](https://github.com/pipxproject/pipx#install-pipx)
 Persistent install:
@@ -205,6 +198,8 @@ Description=Whoogle
 #Environment=WHOOGLE_ALT_TL=farside.link/lingva
 #Environment=WHOOGLE_ALT_IMG=farside.link/rimgo
 #Environment=WHOOGLE_ALT_WIKI=farside.link/wikiless
+#Environment=WHOOGLE_ALT_IMDB=farside.link/libremdb
+#Environment=WHOOGLE_ALT_QUORA=farside.link/quetre
 # Load values from dotenv only
 #Environment=WHOOGLE_DOTENV=1
 Type=simple
@@ -231,6 +226,51 @@ sudo systemctl daemon-reload
 sudo systemctl enable whoogle
 sudo systemctl start whoogle
 ```
+
+#### Tor Configuration *optional*
+If routing your request through Tor you will need to make the following adjustments.
+Due to the nature of interacting with Google through Tor we will need to be able to send signals to Tor and therefore authenticate with it.
+
+There are two authentication methods, password and cookie. You will need to make changes to your torrc:
+  * Cookie
+    1. Uncomment or add the following lines in your torrc:
+       - `ControlPort 9051`
+       - `CookieAuthentication 1`
+       - `DataDirectoryGroupReadable 1`
+       - `CookieAuthFileGroupReadable 1`
+
+    2. Make the tor auth cookie readable:
+       - This is assuming that you are using a dedicated user to run whoogle. If you are using a different user replace `whoogle` with that user.
+
+       1. `chmod tor:whoogle /var/lib/tor`
+       2. `chmod tor:whoogle /var/lib/tor/control_auth_cookie`
+
+    3. Restart the tor service:
+       - `systemctl restart tor`
+
+    4. Set the Tor environment variable to 1, `WHOOGLE_CONFIG_TOR`. Refer to the [Environment Variables](#environment-variables) section for more details.
+       - This may be added in the systemd unit file or env file `WHOOGLE_CONFIG_TOR=1`
+
+  * Password
+    1. Run this command:
+       - `tor --hash-password {Your Password Here}`; put your password in place of `{Your Password Here}`.
+       - Keep the output of this command, you will be placing it in your torrc.
+       - Keep the password input of this command, you will be using it later.
+
+    2. Uncomment or add the following lines in your torrc:
+       - `ControlPort 9051`
+       - `HashedControlPassword {Place output here}`; put the output of the previous command in place of `{Place output here}`.
+
+    3. Now take the password from the first step and place it in the control.conf file within the whoogle working directory, ie. [misc/tor/control.conf](misc/tor/control.conf)
+       - If you want to place your password file in a different location set this location with the `WHOOGLE_TOR_CONF` environment variable. Refer to the [Environment Variables](#environment-variables) section for more details.
+
+    4. Heavily restrict access to control.conf to only be readable by the user running whoogle:
+       - `chmod 400 control.conf`
+
+    5. Finally set the Tor environment variable and use password variable to 1, `WHOOGLE_CONFIG_TOR` and `WHOOGLE_TOR_USE_PASS`. Refer to the [Environment Variables](#environment-variables) section for more details.
+       - These may be added to the systemd unit file or env file:
+          - `WHOOGLE_CONFIG_TOR=1`
+          - `WHOOGLE_TOR_USE_PASS=1`
 
 ### G) Manual (Docker)
 1. Ensure the Docker daemon is running, and is accessible by your user account
@@ -331,39 +371,46 @@ There are a few optional environment variables available for customizing a Whoog
 | WHOOGLE_PROXY_LOC    | The location of the proxy server (host or ip).                                            |
 | EXPOSE_PORT          | The port where Whoogle will be exposed.                                                   |
 | HTTPS_ONLY           | Enforce HTTPS. (See [here](https://github.com/benbusby/whoogle-search#https-enforcement)) |
-| WHOOGLE_ALT_TW       | The twitter.com alternative to use when site alternatives are enabled in the config.      |
-| WHOOGLE_ALT_YT       | The youtube.com alternative to use when site alternatives are enabled in the config.      |
-| WHOOGLE_ALT_IG       | The instagram.com alternative to use when site alternatives are enabled in the config.    |
-| WHOOGLE_ALT_RD       | The reddit.com alternative to use when site alternatives are enabled in the config.       |
-| WHOOGLE_ALT_TL       | The Google Translate alternative to use. This is used for all "translate ____" searches.  |
-| WHOOGLE_ALT_MD       | The medium.com alternative to use when site alternatives are enabled in the config.       |
-| WHOOGLE_ALT_IMG       | The imgur.com alternative to use when site alternatives are enabled in the config.       |
-| WHOOGLE_ALT_WIKI       | The wikipedia.com alternative to use when site alternatives are enabled in the config.       |
-| WHOOGLE_AUTOCOMPLETE | Controls visibility of autocomplete/search suggestions. Default on -- use '0' to disable  |
+| WHOOGLE_ALT_TW       | The twitter.com alternative to use when site alternatives are enabled in the config. Set to "" to disable. |
+| WHOOGLE_ALT_YT       | The youtube.com alternative to use when site alternatives are enabled in the config. Set to "" to disable. |
+| WHOOGLE_ALT_IG       | The instagram.com alternative to use when site alternatives are enabled in the config. Set to "" to disable. |
+| WHOOGLE_ALT_RD       | The reddit.com alternative to use when site alternatives are enabled in the config. Set to "" to disable. |
+| WHOOGLE_ALT_TL       | The Google Translate alternative to use. This is used for all "translate ____" searches.  Set to "" to disable. |
+| WHOOGLE_ALT_MD       | The medium.com alternative to use when site alternatives are enabled in the config. Set to "" to disable. |
+| WHOOGLE_ALT_IMG      | The imgur.com alternative to use when site alternatives are enabled in the config. Set to "" to disable. |
+| WHOOGLE_ALT_WIKI     | The wikipedia.com alternative to use when site alternatives are enabled in the config. Set to "" to disable. |
+| WHOOGLE_ALT_IMDB     | The imdb.com alternative to use when site alternatives are enabled in the config. Set to "" to disable.  |
+| WHOOGLE_ALT_QUORA    | The quora.com alternative to use when site alternatives are enabled in the config. Set to "" to disable. |
+| WHOOGLE_AUTOCOMPLETE | Controls visibility of autocomplete/search suggestions. Default on -- use '0' to disable. |
 | WHOOGLE_MINIMAL      | Remove everything except basic result cards from all search queries.                      |
 | WHOOGLE_CSP          | Sets a default set of 'Content-Security-Policy' headers                                   |
-| WHOOGLE_RESULTS_PER_PAGE          | Set the number of results per page                                   |
+| WHOOGLE_RESULTS_PER_PAGE          | Set the number of results per page                                           |
+| WHOOGLE_TOR_SERVICE  | Enable/disable the Tor service on startup. Default on -- use '0' to disable.              |
+| WHOOGLE_TOR_USE_PASS | Use password authentication for tor control port. |
+| WHOOGLE_TOR_CONF | The absolute path to the config file containing the password for the tor control port. Default: ./misc/tor/control.conf WHOOGLE_TOR_PASS must be 1 for this to work.|
 
 ### Config Environment Variables
 These environment variables allow setting default config values, but can be overwritten manually by using the home page config menu. These allow a shortcut for destroying/rebuilding an instance to the same config state every time.
 
-| Variable                       | Description                                                     |
-| ------------------------------ | --------------------------------------------------------------- |
-| WHOOGLE_CONFIG_DISABLE         | Hide config from UI and disallow changes to config by client    |
-| WHOOGLE_CONFIG_COUNTRY         | Filter results by hosting country                               |
-| WHOOGLE_CONFIG_LANGUAGE        | Set interface language                                          |
-| WHOOGLE_CONFIG_SEARCH_LANGUAGE | Set search result language                                      |
-| WHOOGLE_CONFIG_BLOCK           | Block websites from search results (use comma-separated list)   |
-| WHOOGLE_CONFIG_THEME           | Set theme mode (light, dark, or system)                         |
-| WHOOGLE_CONFIG_SAFE            | Enable safe searches                                            |
-| WHOOGLE_CONFIG_ALTS            | Use social media site alternatives (nitter, invidious, etc)     |
-| WHOOGLE_CONFIG_NEAR            | Restrict results to only those near a particular city           |
-| WHOOGLE_CONFIG_TOR             | Use Tor routing (if available)                                  |
-| WHOOGLE_CONFIG_NEW_TAB         | Always open results in new tab                                  |
-| WHOOGLE_CONFIG_VIEW_IMAGE      | Enable View Image option                                        |
-| WHOOGLE_CONFIG_GET_ONLY        | Search using GET requests only                                  |
-| WHOOGLE_CONFIG_URL             | The root url of the instance (`https://<your url>/`)            |
-| WHOOGLE_CONFIG_STYLE           | The custom CSS to use for styling (should be single line)       |
+| Variable                             | Description                                                     |
+| ------------------------------------ | --------------------------------------------------------------- |
+| WHOOGLE_CONFIG_DISABLE               | Hide config from UI and disallow changes to config by client    |
+| WHOOGLE_CONFIG_COUNTRY               | Filter results by hosting country                               |
+| WHOOGLE_CONFIG_LANGUAGE              | Set interface language                                          |
+| WHOOGLE_CONFIG_SEARCH_LANGUAGE       | Set search result language                                      |
+| WHOOGLE_CONFIG_BLOCK                 | Block websites from search results (use comma-separated list)   |
+| WHOOGLE_CONFIG_THEME                 | Set theme mode (light, dark, or system)                         |
+| WHOOGLE_CONFIG_SAFE                  | Enable safe searches                                            |
+| WHOOGLE_CONFIG_ALTS                  | Use social media site alternatives (nitter, invidious, etc)     |
+| WHOOGLE_CONFIG_NEAR                  | Restrict results to only those near a particular city           |
+| WHOOGLE_CONFIG_TOR                   | Use Tor routing (if available)                                  |
+| WHOOGLE_CONFIG_NEW_TAB               | Always open results in new tab                                  |
+| WHOOGLE_CONFIG_VIEW_IMAGE            | Enable View Image option                                        |
+| WHOOGLE_CONFIG_GET_ONLY              | Search using GET requests only                                  |
+| WHOOGLE_CONFIG_URL                   | The root url of the instance (`https://<your url>/`)            |
+| WHOOGLE_CONFIG_STYLE                 | The custom CSS to use for styling (should be single line)       |
+| WHOOGLE_CONFIG_PREFERENCES_ENCRYPTED | Encrypt preferences token, requires preferences key             |
+| WHOOGLE_CONFIG_PREFERENCES_KEY       | Key to encrypt preferences in URL (REQUIRED to show url)        |
 
 ## Usage
 Same as most search engines, with the exception of filtering by time range.
@@ -444,6 +491,31 @@ Unfortunately, Firefox Containers do not currently pass through `POST` requests 
 4. Restart Firefox
 5. Navigate to Whoogle instance and [re-add the engine](#set-whoogle-as-your-primary-search-engine)
 
+### Reverse Proxying
+
+#### Nginx
+
+Here is a sample Nginx config for Whoogle:
+
+```
+server {
+	server_name your_domain_name.com;
+	access_log /dev/null;
+	error_log /dev/null;
+
+	location / {
+	    proxy_set_header X-Real-IP $remote_addr;
+	    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+	    proxy_set_header X-Forwarded-Proto $scheme;
+	    proxy_set_header Host $host;
+	    proxy_set_header X-NginX-Proxy true;
+	    proxy_pass http://localhost:5000;
+	}
+}
+```
+
+You can then add SSL support using LetsEncrypt by following a guide such as [this one](https://www.nginx.com/blog/using-free-ssltls-certificates-from-lets-encrypt-with-nginx/).
+
 ## Contributing
 
 Under the hood, Whoogle is a basic Flask app with the following structure:
@@ -464,7 +536,7 @@ Under the hood, Whoogle is a basic Flask app with the following structure:
     - `search.html`: An iframe-able search page
     - `logo.html`: A template consisting mostly of the Whoogle logo as an SVG (separated to help keep `index.html` a bit cleaner)
     - `opensearch.xml`: A template used for supporting [OpenSearch](https://developer.mozilla.org/en-US/docs/Web/OpenSearch).
-    - `imageresults.html`: An "exprimental" template used for supporting the "Full Size" image feature on desktop.
+    - `imageresults.html`: An "experimental" template used for supporting the "Full Size" image feature on desktop.
   - `static/<css|js>`
     - CSS/Javascript files, should be self-explanatory
   - `static/settings`
@@ -514,16 +586,16 @@ A lot of the app currently piggybacks on Google's existing support for fetching 
 | Website | Country | Language | Cloudflare |
 |-|-|-|-|
 | [https://search.albony.xyz](https://search.albony.xyz/) | 🇮🇳 IN | Multi-choice |  |
-| [https://search.garudalinux.org](https://search.garudalinux.org) | 🇩🇪 DE | Multi-choice |  |
-| [https://whooglesearch.net](https://whooglesearch.net) | 🇩🇪 DE | Spanish |  |
+| [https://search.garudalinux.org](https://search.garudalinux.org) | 🇫🇮 FI | Multi-choice | ✅ |
+| [https://search.dr460nf1r3.org](https://search.dr460nf1r3.org) | 🇩🇪 DE | Multi-choice | ✅ |
 | [https://s.tokhmi.xyz](https://s.tokhmi.xyz) | 🇺🇸 US | Multi-choice | ✅ |
-| [https://www.whooglesearch.ml](https://www.whooglesearch.ml) | 🇺🇸 US | English | |
 | [https://search.sethforprivacy.com](https://search.sethforprivacy.com) | 🇩🇪 DE | English | |
 | [https://whoogle.dcs0.hu](https://whoogle.dcs0.hu) | 🇭🇺 HU | Multi-choice | |
 | [https://whoogle.esmailelbob.xyz](https://whoogle.esmailelbob.xyz) | 🇨🇦 CA | Multi-choice | |
 | [https://gowogle.voring.me](https://gowogle.voring.me) | 🇺🇸 US | Multi-choice | |
-| [https://whoogle.lunar.icu](https://whoogle.lunar.icu) | 🇩🇪 DE | Multi-choice | ✅ |
-
+| [https://whoogle.privacydev.net](https://whoogle.privacydev.net) | 🇺🇸 US | Multi-choice | |
+| [https://wg.vern.cc](https://wg.vern.cc) | 🇺🇸 US | English |  |
+| [https://www.indexia.gq](https://www.indexia.gq) | 🇨🇦 CA | Multi-choice | ✅ |
 
 
 * A checkmark in the "Cloudflare" category here refers to the use of the reverse proxy, [Cloudflare](https://cloudflare.com). The checkmark will not be listed for a site which uses Cloudflare DNS but rather the proxying service which grants Cloudflare the ability to monitor traffic to the website.
@@ -534,6 +606,13 @@ A lot of the app currently piggybacks on Google's existing support for fetching 
 |-|-|-|
 | [http://whoglqjdkgt2an4tdepberwqz3hk7tjo4kqgdnuj77rt7nshw2xqhqad.onion](http://whoglqjdkgt2an4tdepberwqz3hk7tjo4kqgdnuj77rt7nshw2xqhqad.onion) | 🇺🇸 US |  Multi-choice
 | [http://nuifgsnbb2mcyza74o7illtqmuaqbwu4flam3cdmsrnudwcmkqur37qd.onion](http://nuifgsnbb2mcyza74o7illtqmuaqbwu4flam3cdmsrnudwcmkqur37qd.onion) | 🇩🇪 DE |  English
+| [http://whoogle.vernccvbvyi5qhfzyqengccj7lkove6bjot2xhh5kajhwvidqafczrad.onion](http://whoogle.vernccvbvyi5qhfzyqengccj7lkove6bjot2xhh5kajhwvidqafczrad.onion/) | 🇺🇸 US | English |
+
+#### I2P Instances
+
+| Website | Country | Language |
+|-|-|-|
+| [http://verneks7rfjptpz5fpii7n7nrxilsidi2qxepeuuf66c3tsf4nhq.b32.i2p](http://verneks7rfjptpz5fpii7n7nrxilsidi2qxepeuuf66c3tsf4nhq.b32.i2p) | 🇺🇸 US | English |
 
 ## Screenshots
 #### Desktop

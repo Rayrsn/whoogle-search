@@ -16,9 +16,11 @@ def gen_file_hash(path: str, static_file: str) -> str:
 
 def read_config_bool(var: str) -> bool:
     val = os.getenv(var, '0')
-    if val.isdigit():
-        return bool(int(val))
-    return False
+    # user can specify one of the following values as 'true' inputs (all
+    # variants with upper case letters will also work):
+    # ('true', 't', '1', 'yes', 'y')
+    val = val.lower() in ('true', 't', '1', 'yes', 'y')
+    return val
 
 
 def get_client_ip(r: Request) -> str:
@@ -33,6 +35,15 @@ def get_request_url(url: str) -> str:
         return url.replace('http://', 'https://', 1)
 
     return url
+
+
+def get_proxy_host_url(r: Request, default: str, root=False) -> str:
+    scheme = r.headers.get('X-Forwarded-Proto', 'https')
+    http_host = r.headers.get('X-Forwarded-Host')
+    if http_host:
+        return f'{scheme}://{http_host}{r.full_path if not root else "/"}'
+
+    return default
 
 
 def check_for_update(version_url: str, current: str) -> int:

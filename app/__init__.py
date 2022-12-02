@@ -3,9 +3,9 @@ from app.request import send_tor_signal
 from app.utils.session import generate_user_key
 from app.utils.bangs import gen_bangs_json
 from app.utils.misc import gen_file_hash, read_config_bool
+from base64 import b64encode
 from datetime import datetime, timedelta
 from flask import Flask
-from flask_session import Session
 import json
 import logging.config
 import os
@@ -15,27 +15,29 @@ from dotenv import load_dotenv
 
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+from app.utils.misc import read_config_bool
+from app.version import __version__
+
 app = Flask(__name__, static_folder=os.path.dirname(
     os.path.abspath(__file__)) + '/static')
 
 app.wsgi_app = ProxyFix(app.wsgi_app)
 
+dot_env_path = (
+    os.path.join(os.path.dirname(os.path.abspath(__file__)),
+    '../whoogle.env'))
+
 # Load .env file if enabled
-if os.getenv('WHOOGLE_DOTENV', ''):
-    dotenv_path = '../whoogle.env'
-    load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                             dotenv_path))
+if read_config_bool('WHOOGLE_DOTENV'):
+    load_dotenv(dot_env_path)
 
 app.default_key = generate_user_key()
-app.config['SECRET_KEY'] = os.urandom(32)
-app.config['SESSION_TYPE'] = 'filesystem'
-app.config['SESSION_COOKIE_SAMESITE'] = 'strict'
 
-if os.getenv('HTTPS_ONLY'):
+if read_config_bool('HTTPS_ONLY'):
     app.config['SESSION_COOKIE_NAME'] = '__Secure-session'
     app.config['SESSION_COOKIE_SECURE'] = True
 
-app.config['VERSION_NUMBER'] = '0.7.2'
+app.config['VERSION_NUMBER'] = __version__
 app.config['APP_ROOT'] = os.getenv(
     'APP_ROOT',
     os.path.dirname(os.path.abspath(__file__)))
@@ -70,12 +72,43 @@ app.config['CONFIG_DISABLE'] = read_config_bool('WHOOGLE_CONFIG_DISABLE')
 app.config['SESSION_FILE_DIR'] = os.path.join(
     app.config['CONFIG_PATH'],
     'session')
+app.config['MAX_SESSION_SIZE'] = 4000  # Sessions won't exceed 4KB
 app.config['BANG_PATH'] = os.getenv(
     'CONFIG_VOLUME',
     os.path.join(app.config['STATIC_FOLDER'], 'bangs'))
 app.config['BANG_FILE'] = os.path.join(
     app.config['BANG_PATH'],
     'bangs.json')
+
+# Ensure all necessary directories exist
+if not os.path.exists(app.config['CONFIG_PATH']):
+    os.makedirs(app.config['CONFIG_PATH'])
+
+if not os.path.exists(app.config['SESSION_FILE_DIR']):
+    os.makedirs(app.config['SESSION_FILE_DIR'])
+
+if not os.path.exists(app.config['BANG_PATH']):
+    os.makedirs(app.config['BANG_PATH'])
+
+if not os.path.exists(app.config['BUILD_FOLDER']):
+    os.makedirs(app.config['BUILD_FOLDER'])
+
+# Session values
+app_key_path = os.path.join(app.config['CONFIG_PATH'], 'whoogle.key')
+if os.path.exists(app_key_path):
+    app.config['SECRET_KEY'] = open(app_key_path, 'r').read()
+else:
+    app.config['SECRET_KEY'] = str(b64encode(os.urandom(32)))
+    with open(app_key_path, 'w') as key_file:
+        key_file.write(app.config['SECRET_KEY'])
+        key_file.close()
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=365)
+
+# NOTE: SESSION_COOKIE_SAMESITE must be set to 'lax' to allow the user's
+# previous session to persist when accessing the instance from an external
+# link. Setting this value to 'strict' causes Whoogle to revalidate a new
+# session, and fail, resulting in cookies being disabled.
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 # Config fields that are used to check for updates
 app.config['RELEASES_URL'] = 'https://github.com/' \
@@ -100,15 +133,7 @@ app.config['CSP'] = 'default-src \'none\';' \
                     'media-src \'self\';' \
                     'connect-src \'self\';'
 
-if not os.path.exists(app.config['CONFIG_PATH']):
-    os.makedirs(app.config['CONFIG_PATH'])
-
-if not os.path.exists(app.config['SESSION_FILE_DIR']):
-    os.makedirs(app.config['SESSION_FILE_DIR'])
-
-# Generate DDG bang filter, and create path if it doesn't exist yet
-if not os.path.exists(app.config['BANG_PATH']):
-    os.makedirs(app.config['BANG_PATH'])
+# Generate DDG bang filter
 if not os.path.exists(app.config['BANG_FILE']):
     json.dump({}, open(app.config['BANG_FILE'], 'w'))
     bangs_thread = threading.Thread(
@@ -117,9 +142,6 @@ if not os.path.exists(app.config['BANG_FILE']):
     bangs_thread.start()
 
 # Build new mapping of static files for cache busting
-if not os.path.exists(app.config['BUILD_FOLDER']):
-    os.makedirs(app.config['BUILD_FOLDER'])
-
 cache_busting_dirs = ['css', 'js']
 for cb_dir in cache_busting_dirs:
     full_cb_dir = os.path.join(app.config['STATIC_FOLDER'], cb_dir)
@@ -145,8 +167,6 @@ for cb_dir in cache_busting_dirs:
 app.jinja_env.globals.update(clean_query=clean_query)
 app.jinja_env.globals.update(
     cb_url=lambda f: app.config['CACHE_BUSTING_MAP'][f])
-
-Session(app)
 
 # Attempt to acquire tor identity, to determine if Tor config is available
 send_tor_signal(Signal.HEARTBEAT)
